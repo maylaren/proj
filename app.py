@@ -28,11 +28,21 @@ def upload():
     if file_ext not in ["mp3", "wav"]:
         return "Unsupported file format", 400
 
-    filename = f"{uuid.uuid4()}.{file_ext}"
-    filepath = os.path.join(UPLOAD_FOLDER, filename)
-    file.save(filepath)
+    raw_filename = f"{uuid.uuid4()}"
+    raw_filepath = os.path.join(UPLOAD_FOLDER, f"{raw_filename}.{file_ext}")
+    file.save(raw_filepath)
 
-    return render_template("player.html", filename=filename)
+    if file_ext == "mp3":
+        # Convert MP3 to WAV using pydub
+        sound = AudioSegment.from_mp3(raw_filepath)
+        wav_filename = f"{raw_filename}.wav"
+        wav_filepath = os.path.join(UPLOAD_FOLDER, wav_filename)
+        sound.export(wav_filepath, format="wav")
+    else:
+        wav_filename = f"{raw_filename}.wav"
+        wav_filepath = raw_filepath  # Already WAV
+
+    return render_template("player.html", filename=wav_filename)
 
 @app.route("/process", methods=["POST"])
 def process():
