@@ -1,56 +1,52 @@
-from flask import Flask, render_template, request, send_from_directory, redirect, url_for
+from flask import Flask, render_template, request, send_file
+from pydub import AudioSegment
 import os
 import librosa
 import soundfile as sf
-from werkzeug.utils import secure_filename
+import uuid
 
 app = Flask(__name__)
-UPLOAD_FOLDER = 'uploads'
-PROCESSED_FOLDER = 'processed'
-ALLOWED_EXTENSIONS = {'wav', 'mp3'}
-
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['PROCESSED_FOLDER'] = PROCESSED_FOLDER
-
+UPLOAD_FOLDER = "uploads"
+PROCESSED_FOLDER = "processed"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(PROCESSED_FOLDER, exist_ok=True)
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-@app.route('/')
+@app.route("/")
 def index():
-    return render_template('index.html')
+    return render_template("index.html")
 
-@app.route('/upload', methods=['POST'])
+@app.route("/upload", methods=["POST"])
 def upload():
-    if 'file' not in request.files:
-        return redirect(url_for('index'))
+    if "file" not in request.files:
+        return "No file uploaded", 400
 
-    file = request.files['file']
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-        return redirect(url_for('player', filename=filename))
+    file = request.files["file"]
+    if file.filename == "":
+        return "No file selected", 400
 
-    return redirect(url_for('index'))
+    file_ext = file.filename.rsplit(".", 1)[1].lower()
+    if file_ext not in ["mp3", "wav"]:
+        return "Unsupported file format", 400
 
-@app.route('/player/<filename>')
-def player(filename):
-    return render_template('player.html', filename=filename)
+    filename = f"{uuid.uuid4()}.{file_ext}"
+    filepath = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(filepath)
 
-@app.route('/process/<filename>', methods=['POST'])
-def process(filename):
-    speed = float(request.form['speed'])
-    input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    output_path = os.path.join(app.config['PROCESSED_FOLDER'], f"processed_{filename}.wav")
+    return render_template("player.html", filename=filename)
 
-    y, sr = librosa.load(input_path, sr=None)
+@app.route("/process", methods=["POST"])
+def process():
+    speed = float(request.form.get("speed", 1.0))
+    filename = request.form.get("filename")
+    input_path = os.path.join(UPLOAD_FOLDER, filename)
+    y, sr = librosa.load(input_path)
+
     y_stretched = librosa.effects.time_stretch(y, speed)
+    output_filename = f"processed_{filename.rsplit('.', 1)[0]}.wav"
+    output_path = os.path.join(PROCESSED_FOLDER, output_filename)
     sf.write(output_path, y_stretched, sr)
 
-    return send_from_directory(app.config['PROCESSED_FOLDER'], f"processed_{filename}.wav", as_attachment=True)
+    return send_file(output_path, as_attachment=True)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False, use_reloader=False)
